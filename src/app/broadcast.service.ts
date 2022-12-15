@@ -18,29 +18,17 @@ export const BROADCAST_SERVICE_TOKEN = new InjectionToken<BroadcastService>(
   }
 );
 
-/**
- * The service above doesn’t run Angular’s zone, since it uses an API that does not hook into Angular.
- * This custom OperatorFunction makes sure the observable runs in the zone.
- */
-function runInsideZone<T>(zone: NgZone): OperatorFunction<T, T> {
-  return (source) => {
-    return new Observable(obs => {
-      // makes sure that lifecycle hooks of an Observable are run in the NgZone.
-      const next = (value: T) => zone.run(() => obs.next(value));
-      const error = (e: any) => zone.run(() => obs.error(e));
-      const complete = () => zone.run(() => obs.complete());
-      return source.subscribe({ next, error, complete });
-    });
-  };
-}
 
 export class BroadcastService {
   private broadcastChannel: BroadcastChannel;
   private onMessage = new Subject<any>();
 
-  constructor(name: string, private ngZone: NgZone) {
+  constructor(name: string, private zone: NgZone) {
     this.broadcastChannel = new BroadcastChannel(name);
-    this.broadcastChannel.onmessage = (message) => this.onMessage.next(message.data);
+    this.broadcastChannel.onmessage = (message) =>
+    // The service above doesn’t run Angular’s zone, since it uses an API that does not hook into Angular.
+    // This makes sure the subject runs in the ngZone.
+      this.zone.run(() => this.onMessage.next(message.data));
   }
 
   // sends message to all channel subscribers
@@ -50,9 +38,6 @@ export class BroadcastService {
 
   // return a observable of BroadcastMsg
   onMessageOfType(type: MsgType): Observable<BroadcastMsg> {
-    return this.onMessage.pipe(
-      runInsideZone(this.ngZone), // custom OperatorFunction makes sure the observable runs in the NgZone.
-      filter(message => message.type === type)
-    );
+    return this.onMessage.pipe(filter(message => message.type === type));
   }
 }
